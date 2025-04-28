@@ -8,7 +8,7 @@ using ProductsApi.Application.ErrorHandling;
 using ProductsApi.Domain.Entities.Data;
 using ProductsApi.Domain.Entities.Mappings;
 
-namespace ProductsApi.Services
+namespace ProductsApi.Domain.Services
 {
     public class ProductService : IProductService
     {

@@ -8,7 +8,8 @@ using ProductsApi.Application.Resolvers;
 using ProductsApi.Application.Services;
 using ProductsApi.Domain.Entities.Data;
 using ProductsApi.Domain.Infastructure;
-using ProductsApi.Services;
+using ProductsApi.Domain.Resolvers;
+using ProductsApi.Domain.Services;
 using System.Net;
 using System.Text.Json;
 
@@ -71,7 +72,6 @@ app.MapGet("/product", async (
     var response = await _svc.GetPageResponseAsync(page, page_size, ct);
 
     return Results.Ok(response);
-    // if both page and page_size are supplied, call a paged method
     /*if (page.HasValue && page_size.HasValue)
     {
         var response = await _svc.GetPageResponseAsync(page.Value, page_size.Value, ct);
@@ -89,7 +89,7 @@ app.MapGet("/product", async (
 .Produces<IEnumerable<Product>>(StatusCodes.Status200OK);
 
 
-
+// error handling middleware
 app.Use(async (ctx, next) =>
 {
     try

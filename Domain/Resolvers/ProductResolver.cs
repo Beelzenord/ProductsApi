@@ -5,7 +5,7 @@ using ProductsApi.Domain.Entities.Mappings;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 
-namespace ProductsApi.Services
+namespace ProductsApi.Domain.Resolvers
 {
     public class ProductResolver : IProductResolver
     {
@@ -135,10 +135,10 @@ namespace ProductsApi.Services
 
             // compute window only if paging
             int startIndex = isPaging
-                ? ((page!.Value - 1) * pageSize!.Value + 1) // Use the null-forgiving operator (!) to suppress nullable warnings
+                ? (page!.Value - 1) * pageSize!.Value + 1 // Use the null-forgiving operator (!) to suppress nullable warnings
                 : int.MinValue;
             int endIndex = isPaging
-                ? (startIndex + pageSize!.Value - 1) // Use the null-forgiving operator (!) to suppress nullable warnings
+                ? startIndex + pageSize!.Value - 1 // Use the null-forgiving operator (!) to suppress nullable warnings
                 : int.MaxValue;
 
             await foreach (var raw in JsonSerializer
