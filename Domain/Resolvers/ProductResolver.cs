@@ -1,5 +1,6 @@
 ﻿using ProductsApi.Application.ErrorHandling;
 using ProductsApi.Application.Resolvers;
+using ProductsApi.Application.Strategy;
 using ProductsApi.Domain.Entities.Data;
 using ProductsApi.Domain.Entities.Mappings;
 using System.Runtime.CompilerServices;
@@ -12,7 +13,9 @@ namespace ProductsApi.Domain.Resolvers
         private IReadOnlyDictionary<string, string> _attrNames = null!;
         private IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> _valueNames = null!;
         private ICategoryPathBuilder _catBuilder = null!;
-
+        private readonly IEnumerable<IAttributeMappingStrategy> _strategies;
+        public ProductResolver(IEnumerable<IAttributeMappingStrategy> strategies)
+            => _strategies = strategies;
         public void ConfigureLookups(
             IReadOnlyDictionary<string, string> attrNames,
             IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> valueNames)
@@ -27,6 +30,9 @@ namespace ProductsApi.Domain.Resolvers
                     throw new KeyNotFoundException("Attribute code 'cat' not found in definitions");
 
                 _catBuilder = new CategoryPathBuilder(catMap);
+
+                foreach (var strat in _strategies)
+                    strat.Configure(attrNames, valueNames);
             }
             catch (Exception ex) when (
                 ex is ArgumentNullException ||
@@ -122,79 +128,60 @@ namespace ProductsApi.Domain.Resolvers
             }
         }
 
-        public async Task<PagedResult<Product>> GetPagesAsyncAlt(Stream productsStream, int? page, int? pageSize, CancellationToken ct = default)
+        public async Task<PagedResult<Product>> GetPagesAsyncAlt(
+         Stream productsStream,
+         int? page,
+         int? pageSize,
+         CancellationToken ct = default)
         {
-            // determine if we’re paginating or returning everything
             var isPaging = page.HasValue && pageSize.HasValue;
-            if (isPaging && (page < 1 || pageSize < 1))
-                throw new ArgumentException("Page and pageSize must be >= 1 when supplied.");
+            if (isPaging && (page! < 1 || pageSize! < 1))
+                throw new ArgumentException("page and pageSize must be >= 1");
+
+            int skip = isPaging
+                ? (page!.Value - 1) * pageSize!.Value
+                : 0;
+            int take = pageSize ?? int.MaxValue;
 
             var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-            var pageItems = new List<Product>(pageSize ?? 0);
-            int totalCount = 0;
-
-            // compute window only if paging
-            int startIndex = isPaging
-                ? (page!.Value - 1) * pageSize!.Value + 1 // Use the null-forgiving operator (!) to suppress nullable warnings
-                : int.MinValue;
-            int endIndex = isPaging
-                ? startIndex + pageSize!.Value - 1 // Use the null-forgiving operator (!) to suppress nullable warnings
-                : int.MaxValue;
+            var items = new List<Product>(pageSize ?? 0);
+            int total = 0;
 
             await foreach (var raw in JsonSerializer
                 .DeserializeAsyncEnumerable<ProductRaw>(productsStream, options, ct)
                 .Where(r => r is not null))
             {
-                totalCount++;
-
-                // if paged, skip until we hit our window
-                if (isPaging
-                    && (totalCount < startIndex || totalCount > endIndex))
-                {
+                total++;
+                if (total <= skip)
                     continue;
-                }
 
-                // map & resolve attributes as before
-                var resolvedAttrs = raw!.Attributes.Select(kv =>
-                {
-                    var code = kv.Key;
-                    var codes = kv.Value.Split(',', StringSplitOptions.RemoveEmptyEntries);
-
-                    if (code == "cat")
+                // ** Strategy‐based mapping ** 
+                var resolvedAttrs = raw!.Attributes
+                    .SelectMany(kv =>
                     {
-                        return new ResolvedAttr
-                        {
-                            AttributeCode = code,
-                            AttributeName = _attrNames[code],
-                            SelectedValues = codes.Select(_catBuilder.Build).ToList()
-                        };
-                    }
+                        // pick the first strategy that knows this code
+                        var strat = _strategies.First(s => s.CanMap(kv.Key));
+                        return strat.Map(kv.Key, kv.Value);
+                    })
+                    .ToList();
 
-                    return new ResolvedAttr
-                    {
-                        AttributeCode = code,
-                        AttributeName = _attrNames[code],
-                        SelectedValues = codes.Select(c => _valueNames[code][c]).ToList()
-                    };
-                }).ToList();
-
-                pageItems.Add(new Product
+                items.Add(new Product
                 {
                     Id = raw.Id,
                     Name = raw.Name,
                     Attributes = resolvedAttrs
                 });
+
+                if (isPaging && items.Count >= take)
+                    break;
             }
 
-            // assemble the result
             return new PagedResult<Product>
             {
-                Items = pageItems,
-                TotalCount = totalCount,
-
-                // if paging, use their values; otherwise return the full list as page 1
+                Items = items,
+                TotalCount = total,
                 Page = isPaging ? page!.Value : 1,
-                PageSize = isPaging ? pageSize!.Value : totalCount
+                PageSize = isPaging ? take : total
             };
         }
     }

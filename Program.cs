@@ -6,10 +6,12 @@ using ProductsApi.Application.ErrorHandling;
 using ProductsApi.Application.Gateway;
 using ProductsApi.Application.Resolvers;
 using ProductsApi.Application.Services;
+using ProductsApi.Application.Strategy;
 using ProductsApi.Domain.Entities.Data;
 using ProductsApi.Domain.Infastructure;
 using ProductsApi.Domain.Resolvers;
 using ProductsApi.Domain.Services;
+using ProductsApi.Domain.Strategy;
 using System.Net;
 using System.Text.Json;
 
@@ -39,6 +41,8 @@ builder.Services
 builder.Services.AddScoped<IProductService, ProductService>();
 builder.Services.AddSingleton<IProductResolver, ProductResolver>();
 
+builder.Services.AddSingleton<IAttributeMappingStrategy, CategoryMappingStrategy>();
+builder.Services.AddSingleton<IAttributeMappingStrategy, FlatAttributeMappingStrategy>();
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
@@ -62,8 +66,8 @@ app.UseRouting();
 
 app.MapGet("/product", async (
         IProductService _svc,
-        int? page,             // bound from ?page=...
-        int? page_size,        // bound from ?page_size=...
+        int? page,             
+        int? page_size,       
         CancellationToken ct
     ) =>
 {
@@ -72,18 +76,6 @@ app.MapGet("/product", async (
     var response = await _svc.GetPageResponseAsync(page, page_size, ct);
 
     return Results.Ok(response);
-    /*if (page.HasValue && page_size.HasValue)
-    {
-        var response = await _svc.GetPageResponseAsync(page.Value, page_size.Value, ct);
-
-        return Results.Ok(response);
-    }
-    else
-    {
-        // otherwise, return everything
-      
-        return Results.Ok(null);
-    }*/
 })
 .WithName("GetProducts")
 .Produces<IEnumerable<Product>>(StatusCodes.Status200OK);
