@@ -1,6 +1,7 @@
 ﻿using ProductsApi.Application.ErrorHandling;
 using ProductsApi.Application.Strategy;
 using ProductsApi.Domain.Entities.Data;
+using System.Reflection.Metadata.Ecma335;
 
 namespace ProductsApi.Domain.Strategy
 {
@@ -23,12 +24,13 @@ namespace ProductsApi.Domain.Strategy
         {
             // 1) Ensure Configure was called
             if (_attrNames == null || _valueNames == null)
-                throw new StrategyImplementationException(
+                throw new AttributeMappingException(
                     "FlatAttributeMappingStrategy not configured with lookup dictionaries");
 
             // 2) Look up the display name for this attribute
             if (!_attrNames.TryGetValue(attributeCode, out var displayName))
-                throw new KeyNotFoundException($"Attribute code '{attributeCode}' not found in lookup");
+                throw new AttributeMappingException(
+                 $"Attribute code '{attributeCode}' not found in lookup");
 
             // 3) Split and map each individual code
             var codes = rawValues?.Split(',', StringSplitOptions.RemoveEmptyEntries)

@@ -18,5 +18,6 @@
         public List<ProductDto> Products { get; set; } = new();
         public int Page { get; set; }
         public int TotalPages { get; set; }
+        public List<string>? Warnings { get; internal set; }
     }
 }

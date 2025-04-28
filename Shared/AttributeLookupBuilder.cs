@@ -1,113 +1,91 @@
 ﻿using ProductsApi.Application.ErrorHandling;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace ProductsApi.Shared
 {
 
+
     public static class AttributeLookupBuilder
     {
-        /// <summary>
-        /// Parses the attribute‐definitions JSON and builds:
-        ///  1) a map from attribute code → attribute display name
-        ///  2) a map from attribute code → (value code → value display name)
-        /// </summary>
+        // only lowercase a–z, one or more
+        private static readonly Regex CodeRegex = new(@"^[a-z]+$", RegexOptions.Compiled);
+
         public static (
             Dictionary<string, string> AttrNameByCode,
             Dictionary<string, Dictionary<string, string>> ValueNameByCode
         ) BuildFromJson(JsonElement root)
         {
-            try
+            if (root.ValueKind != JsonValueKind.Array)
+                throw new AttributeLookupException("Expected top-level JSON array of attribute definitions");
+
+            var attrNameByCode = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            var valueNameByCode = new Dictionary<string, Dictionary<string, string>>(StringComparer.OrdinalIgnoreCase);
+
+            int defIndex = 0;
+            foreach (var def in root.EnumerateArray())
             {
-                if (root.ValueKind != JsonValueKind.Array)
-                    throw new AttributeLookupException("Expected JSON array of attribute definitions");
+                defIndex++;
 
-                var attrNameByCode = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-                var valueNameByCode = new Dictionary<string, Dictionary<string, string>>(StringComparer.OrdinalIgnoreCase);
+                // required props
+                if (!def.TryGetProperty("code", out var codeProp)) throw new AttributeLookupException($"Definition #{defIndex} missing 'code'");
+                if (!def.TryGetProperty("name", out var nameProp)) throw new AttributeLookupException($"Definition #{defIndex} missing 'name'");
+                if (!def.TryGetProperty("values", out var valuesProp)) throw new AttributeLookupException($"Definition #{defIndex} missing 'values'");
+                if (valuesProp.ValueKind != JsonValueKind.Array)
+                    throw new AttributeLookupException($"Definition #{defIndex}: 'values' must be an array (can be empty)");
 
-                int defIndex = 0;
-                foreach (var def in root.EnumerateArray())
+                // validate attribute code
+                if (codeProp.ValueKind != JsonValueKind.String)
+                    throw new AttributeLookupException($"Definition #{defIndex}: 'code' must be a string");
+                var attrCode = codeProp.GetString()!.Trim();
+                if (string.IsNullOrEmpty(attrCode) || !CodeRegex.IsMatch(attrCode))
+                    throw new AttributeLookupException($"Definition #{defIndex}: invalid 'code' value '{attrCode}' (must be a–z only)");
+
+                // validate attribute name
+                if (nameProp.ValueKind != JsonValueKind.String)
+                    throw new AttributeLookupException($"Definition '{attrCode}': 'name' must be a string");
+                var attrName = nameProp.GetString()!.Trim();
+                if (string.IsNullOrEmpty(attrName))
+                    throw new AttributeLookupException($"Definition '{attrCode}': 'name' cannot be empty");
+
+                attrNameByCode[attrCode] = attrName;
+
+                // build each value mapping (values may now be any non-empty string)
+                var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                int valIndex = 0;
+                foreach (var v in valuesProp.EnumerateArray())
                 {
-                    defIndex++;
-                    try
-                    {
-                        // Required properties
-                        if (!def.TryGetProperty("code", out var codeProp) ||
-                            !def.TryGetProperty("name", out var nameProp) ||
-                            !def.TryGetProperty("values", out var valuesProp) ||
-                             valuesProp.ValueKind != JsonValueKind.Array)
-                        {
-                            // skip malformed entries
-                            continue;
-                        }
+                    valIndex++;
+                    if (!v.TryGetProperty("code", out var vcodeProp))
+                        throw new AttributeLookupException($"Definition '{attrCode}', value #{valIndex} missing 'code'");
+                    if (!v.TryGetProperty("name", out var vnameProp))
+                        throw new AttributeLookupException($"Definition '{attrCode}', value #{valIndex} missing 'name'");
 
-                        var attrCode = codeProp.GetString()
-                                       ?? throw new AttributeLookupException($"Attribute 'code' was null at definition #{defIndex}");
-                        var attrName = nameProp.GetString()
-                                       ?? throw new AttributeLookupException($"Attribute 'name' was null for code '{attrCode}'");
-
-                        attrNameByCode[attrCode] = attrName;
-
-                        var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-                        int valIndex = 0;
-                        foreach (var v in valuesProp.EnumerateArray())
-                        {
-                            valIndex++;
-                            try
-                            {
-                                if (!v.TryGetProperty("code", out var vcodeProp) ||
-                                    !v.TryGetProperty("name", out var vnameProp))
-                                {
-                                    continue; // skip bad value entries
-                                }
-
-                                var valueCode = vcodeProp.GetString()
-                                                ?? throw new AttributeLookupException(
-                                                    $"Value 'code' was null for attribute '{attrCode}', value #{valIndex}");
-                                var valueName = vnameProp.GetString()
-                                                ?? throw new AttributeLookupException(
-                                                    $"Value 'name' was null for attribute '{attrCode}', value '{valueCode}'");
-
-                                map[valueCode] = valueName;
-                            }
-                            catch (AttributeLookupException)
-                            {
-                                // rethrow our custom exceptions directly
-                                throw;
-                            }
-                            catch (Exception ex)
-                            {
-                                throw new AttributeLookupException(
-                                    $"Error parsing value #{valIndex} for attribute '{attrCode}'", ex);
-                            }
-                        }
-
-                        valueNameByCode[attrCode] = map;
-                    }
-                    catch (AttributeLookupException)
-                    {
-                        // bubble up our own exceptions
-                        throw;
-                    }
-                    catch (Exception ex)
-                    {
+                    // validate value code is a non-empty string (no regex)
+                    if (vcodeProp.ValueKind != JsonValueKind.String)
                         throw new AttributeLookupException(
-                            $"Error parsing attribute definition at index #{defIndex}", ex);
-                    }
+                            $"Definition '{attrCode}', value #{valIndex}: 'code' must be a string");
+                    var valueCode = vcodeProp.GetString()!.Trim();
+                    if (string.IsNullOrEmpty(valueCode))
+                        throw new AttributeLookupException(
+                            $"Definition '{attrCode}', value #{valIndex}: 'code' cannot be empty");
+
+                    // validate value name
+                    if (vnameProp.ValueKind != JsonValueKind.String)
+                        throw new AttributeLookupException(
+                            $"Definition '{attrCode}', value '{valueCode}': 'name' must be a string");
+                    var valueName = vnameProp.GetString()!.Trim();
+                    if (string.IsNullOrEmpty(valueName))
+                        throw new AttributeLookupException(
+                            $"Definition '{attrCode}', value '{valueCode}': 'name' cannot be empty");
+
+                    map[valueCode] = valueName;
                 }
 
-                return (attrNameByCode, valueNameByCode);
+                valueNameByCode[attrCode] = map;
             }
-            catch (AttributeLookupException)
-            {
-                // bubble our exceptions unchanged
-                throw;
-            }
-            catch (Exception ex)
-            {
-                // catch anything else (e.g. JsonElement quirks)
-                throw new AttributeLookupException(
-                    "Failed to build attribute lookups from JSON", ex);
-            }
+
+            return (attrNameByCode, valueNameByCode);
         }
     }
 }

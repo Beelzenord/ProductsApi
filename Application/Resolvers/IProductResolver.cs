@@ -9,9 +9,8 @@ namespace ProductsApi.Application.Resolvers
         void ConfigureLookups(
             IReadOnlyDictionary<string, string> attrNames,
             IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> valueNames);
-        public Task<PagedResult<Product>> GetPagesAsync(Stream prodStream, int page, int pageSize, CancellationToken cancellationToken);
 
-        public Task<PagedResult<Product>> GetPagesAsyncAlt(Stream productsStream, int? page, int? pageSize, CancellationToken ct = default);
+        public Task<PagedResult<Product>> GetPagesAsync(Stream productsStream, int? page, int? pageSize, CancellationToken ct = default);
 
     }
 }

@@ -3,6 +3,7 @@ using ProductsApi.Application.Resolvers;
 using ProductsApi.Application.Strategy;
 using ProductsApi.Domain.Entities.Data;
 using ProductsApi.Domain.Entities.Mappings;
+using ProductsApi.Domain.Strategy;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 
@@ -44,96 +45,12 @@ namespace ProductsApi.Domain.Resolvers
         }
 
         public async Task<PagedResult<Product>> GetPagesAsync(
-       Stream productsStream,
-       int page,
-       int pageSize,
-       CancellationToken ct = default)
+     Stream productsStream,
+     int? page,
+     int? pageSize,
+     CancellationToken ct = default)
         {
-            try
-            {
-                var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-                var pageItems = new List<Product>(pageSize);
-                int totalCount = 0;
-                int startIndex = (page - 1) * pageSize + 1;
-                int endIndex = startIndex + pageSize - 1;
-
-                await foreach (var raw in JsonSerializer
-                    .DeserializeAsyncEnumerable<ProductRaw>(productsStream, options, ct)
-                    .Where(r => r is not null))
-                {
-                    totalCount++;
-                    if (totalCount < startIndex || totalCount > endIndex)
-                        continue;
-
-                    // mapping can throw, so it's inside our try/catch
-                    var resolvedAttrs = raw!.Attributes.Select(kv =>
-                    {
-                        var code = kv.Key;
-                        var codes = kv.Value
-                                      .Split(',', StringSplitOptions.RemoveEmptyEntries);
-
-                        if (code == "cat")
-                        {
-                            return new ResolvedAttr
-                            {
-                                AttributeCode = code,
-                                AttributeName = _attrNames[code],
-                                SelectedValues = codes.Select(_catBuilder.Build).ToList()
-                            };
-                        }
-
-                        return new ResolvedAttr
-                        {
-                            AttributeCode = code,
-                            AttributeName = _attrNames[code],
-                            SelectedValues = codes.Select(c => _valueNames[code][c]).ToList()
-                        };
-                    }).ToList();
-
-                    pageItems.Add(new Product
-                    {
-                        Id = raw.Id,
-                        Name = raw.Name,
-                        Attributes = resolvedAttrs
-                    });
-                }
-
-                return new PagedResult<Product>
-                {
-                    Items = pageItems,
-                    Page = page,
-                    PageSize = pageSize,
-                    TotalCount = totalCount
-                };
-            }
-            catch (JsonException ex)
-            {
-                throw new ProductResolutionException(
-                    "Failed to parse products JSON", ex);
-            }
-            catch (KeyNotFoundException ex)
-            {
-                throw new ProductResolutionException(
-                    "Unexpected attribute code encountered during product mapping", ex);
-            }
-            catch (OperationCanceledException)
-            {
-                // let cancellations bubble up unchanged
-                throw;
-            }
-            catch (Exception ex)
-            {
-                throw new ProductResolutionException(
-                    "An unexpected error occurred while resolving products", ex);
-            }
-        }
-
-        public async Task<PagedResult<Product>> GetPagesAsyncAlt(
-         Stream productsStream,
-         int? page,
-         int? pageSize,
-         CancellationToken ct = default)
-        {
+            // 1) Prepare paging parameters
             var isPaging = page.HasValue && pageSize.HasValue;
             if (isPaging && (page! < 1 || pageSize! < 1))
                 throw new ArgumentException("page and pageSize must be >= 1");
@@ -144,9 +61,13 @@ namespace ProductsApi.Domain.Resolvers
             int take = pageSize ?? int.MaxValue;
 
             var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+
+            // 2) Local accumulators
             var items = new List<Product>(pageSize ?? 0);
+            var warnings = new List<string>();
             int total = 0;
 
+            // 3) One‐pass streaming
             await foreach (var raw in JsonSerializer
                 .DeserializeAsyncEnumerable<ProductRaw>(productsStream, options, ct)
                 .Where(r => r is not null))
@@ -155,30 +76,52 @@ namespace ProductsApi.Domain.Resolvers
                 if (total <= skip)
                     continue;
 
-                // ** Strategy‐based mapping ** 
-                var resolvedAttrs = raw!.Attributes
-                    .SelectMany(kv =>
-                    {
-                        // pick the first strategy that knows this code
-                        var strat = _strategies.First(s => s.CanMap(kv.Key));
-                        return strat.Map(kv.Key, kv.Value);
-                    })
-                    .ToList();
+                // 3a) Per‐product warning bucket
+                var productWarnings = new List<string>();
 
+                // 3b) Map each attribute, catching _any_ failure
+                var resolved = new List<ResolvedAttr>();
+                foreach (var kv in raw!.Attributes)
+                {
+                    try
+                    {
+                        var strat = _strategies.FirstOrDefault(s => s.CanMap(kv.Key))
+                                    ?? throw new Exception($"No strategy for '{kv.Key}'");
+                        resolved.AddRange(strat.Map(kv.Key, kv.Value));
+                    }
+                    catch (Exception ex)
+                    {
+                        // record and skip
+                        productWarnings.Add(ex.Message);
+                    }
+                }
+
+                // 3c) Add the product (even if 'resolved' is empty)
                 items.Add(new Product
                 {
                     Id = raw.Id,
                     Name = raw.Name,
-                    Attributes = resolvedAttrs
+                    Attributes = resolved
                 });
 
+                // 3d) Record product‐specific warnings
+                if (productWarnings.Count > 0)
+                {
+                    warnings.Add(
+                        $"Product {raw.Id}: {string.Join("; ", productWarnings)}"
+                    );
+                }
+
+                // 3e) Early exit for paging
                 if (isPaging && items.Count >= take)
                     break;
             }
 
+            // 4) Build and return the result in one shot
             return new PagedResult<Product>
             {
                 Items = items,
+                Warnings = warnings,
                 TotalCount = total,
                 Page = isPaging ? page!.Value : 1,
                 PageSize = isPaging ? take : total

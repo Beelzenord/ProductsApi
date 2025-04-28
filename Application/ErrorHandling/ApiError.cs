@@ -71,4 +71,22 @@
         public StrategyImplementationException(string message, Exception inner)
             : base(message, inner) { }
     }
+
+    public class AttributeMappingException : Exception
+    {
+        public AttributeMappingException(string message)
+            : base(message) { }
+
+        public AttributeMappingException(string message, Exception inner)
+            : base(message, inner) { }
+    }
+
+    public class CategoryMappingException : Exception
+    {
+        public CategoryMappingException(string message)
+            : base(message) { }
+
+        public CategoryMappingException(string message, Exception inner)
+            : base(message, inner) { }
+    }
 }

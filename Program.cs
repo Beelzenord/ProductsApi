@@ -14,6 +14,7 @@ using ProductsApi.Domain.Services;
 using ProductsApi.Domain.Strategy;
 using System.Net;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -23,7 +24,13 @@ builder.Services.AddOpenApi();
 
 builder.Services.Configure<ApiSettings>(
     builder.Configuration.GetSection("ApiSettings"));
-// 1) Register your HTTP-based gateways
+
+builder.Services.ConfigureHttpJsonOptions(opts =>
+{
+    opts.SerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
+});
+
+
 builder.Services
     .AddHttpClient<IProductGateway, ProductGateway>()
     .ConfigureHttpClient((sp, client) => {
@@ -78,7 +85,12 @@ app.MapGet("/product", async (
     return Results.Ok(response);
 })
 .WithName("GetProducts")
-.Produces<IEnumerable<Product>>(StatusCodes.Status200OK);
+.Produces<PagedProductResponse>(StatusCodes.Status200OK)
+.Produces(StatusCodes.Status400BadRequest)
+.Produces(StatusCodes.Status503ServiceUnavailable)
+.Produces(StatusCodes.Status422UnprocessableEntity)
+.Produces(StatusCodes.Status500InternalServerError); 
+
 
 
 // error handling middleware
@@ -114,6 +126,11 @@ app.Use(async (ctx, next) =>
         await ctx.Response.WriteAsJsonAsync(new { error = ex.Message });
     }
     catch (CategoryPathBuilderException ex)
+    {
+        ctx.Response.StatusCode = 500;
+        await ctx.Response.WriteAsJsonAsync(new { error = ex.Message });
+    }
+    catch (AttributeLookupException ex)
     {
         ctx.Response.StatusCode = 500;
         await ctx.Response.WriteAsJsonAsync(new { error = ex.Message });
