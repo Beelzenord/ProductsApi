@@ -25,9 +25,6 @@ Thumbs.db
 packages/
 node_modules/
 
-# Configuration files
-appsettings.json
-appsettings.*.json
 
 # Rider IDE specific
 .idea/
