@@ -5,7 +5,8 @@ namespace ProductsApi.Domain.Entities.Mappings
     public static class ProductMappingExtensions
     {
         public static ProductDto ToProductDto(this Product p)
-            => new ProductDto
+        {
+            return new ProductDto
             {
                 Id = p.Id,
                 Name = p.Name,
@@ -18,5 +19,6 @@ namespace ProductsApi.Domain.Entities.Mappings
                         }))
                     .ToList()
             };
+        }
     }
 }

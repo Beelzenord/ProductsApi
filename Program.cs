@@ -1,5 +1,3 @@
-using Microsoft.AspNetCore.Http.HttpResults;
-using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 using ProductsApi.Application.ApiSettings;
 using ProductsApi.Application.ErrorHandling;
@@ -12,14 +10,13 @@ using ProductsApi.Domain.Infastructure;
 using ProductsApi.Domain.Resolvers;
 using ProductsApi.Domain.Services;
 using ProductsApi.Domain.Strategy;
-using System.Net;
-using System.Text.Json;
+
 using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
-// Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
+
 builder.Services.AddOpenApi();
 
 builder.Services.Configure<ApiSettings>(
@@ -148,3 +145,4 @@ app.Run();
 
 // Minimal record type for POST example
 public record Message(string Text);
+public partial class Program { }

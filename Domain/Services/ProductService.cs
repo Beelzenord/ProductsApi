@@ -2,7 +2,6 @@
 using System.Text.Json;
 using ProductsApi.Application.Resolvers;
 using ProductsApi.Shared;
-using System.Threading;
 using ProductsApi.Application.Gateway;
 using ProductsApi.Application.ErrorHandling;
 using ProductsApi.Domain.Entities.Data;
@@ -15,18 +14,19 @@ namespace ProductsApi.Domain.Services
         private readonly IProductGateway _prodGateway;
         private readonly IAttributeGateway _attrGateway;
         private readonly IProductResolver _resolver;
+
         public ProductService(
             IProductGateway prodGateway,
             IAttributeGateway attrGateway,
-            IProductResolver resolver
-            )
+            IProductResolver resolver)
         {
             _prodGateway = prodGateway;
             _attrGateway = attrGateway;
             _resolver = resolver;
         }
+
         public async Task<PagedResult<Product>> GetPageAsync(
-       int? page, int? pageSize, CancellationToken cancellationToken = default)
+            int? page, int? pageSize, CancellationToken cancellationToken = default)
         {
             // 0) Validate arguments
             if (page < 1)
@@ -66,34 +66,29 @@ namespace ProductsApi.Domain.Services
             }
             catch (HttpRequestException ex)
             {
-                // any network/HTTP errors from your gateways
                 throw new ServiceUnavailableException(
                     "Could not contact external data source", ex);
             }
             catch (JsonException ex)
             {
-                // any JSON‐parsing errors
                 throw new DomainException(
                     "Received invalid JSON from external service", ex);
             }
             catch (ArgumentException)
             {
-                // rethrow validation errors as‐is so your API can turn them into 400
                 throw;
             }
             catch (Exception ex)
             {
-                // fallback for anything else
                 throw new ServiceException(
                     "An unexpected error occurred while fetching products", ex);
             }
-        
         }
 
         public async Task<PagedProductResponse> GetPageResponseAsync(
-        int? page, int? pageSize, CancellationToken ct = default)
+            int? page, int? pageSize, CancellationToken ct = default)
         {
-           // var paged = await GetPageAsync(page, pageSize, ct);
+
             var paged = await GetPageFromFilesAsync(
                 "attributes.json",
                 "products.json",
@@ -101,11 +96,11 @@ namespace ProductsApi.Domain.Services
                 pageSize,
                 ct
             );
-            var products = paged.Items
-        .Select(p => p.ToProductDto())
-        .ToList();
 
-            // Only set Warnings if there were any
+            var products = paged.Items
+                .Select(p => p.ToProductDto())
+                .ToList();
+
             List<string>? warnings = paged.Warnings?.Count > 0
                 ? paged.Warnings
                 : null;
@@ -119,13 +114,12 @@ namespace ProductsApi.Domain.Services
             };
         }
 
-
         public async Task<PagedResult<Product>> GetPageFromFilesAsync(
-    string attributeJsonPath,
-    string productsJsonPath,
-    int? page,
-    int? pageSize,
-    CancellationToken cancellationToken = default)
+            string attributeJsonPath,
+            string productsJsonPath,
+            int? page,
+            int? pageSize,
+            CancellationToken cancellationToken = default)
         {
             // 0) Validate arguments
             if (page < 1)
@@ -173,10 +167,9 @@ namespace ProductsApi.Domain.Services
             }
             catch (ArgumentException)
             {
-                // validation errors -> 400
                 throw;
             }
-            catch(AttributeLookupException)
+            catch (AttributeLookupException)
             {
                 throw;
             }
@@ -186,4 +179,4 @@ namespace ProductsApi.Domain.Services
             }
         }
     }
-    }
+}

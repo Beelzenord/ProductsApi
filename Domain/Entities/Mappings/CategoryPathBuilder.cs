@@ -7,8 +7,7 @@ namespace ProductsApi.Domain.Entities.Mappings
     {
         private readonly IReadOnlyDictionary<string, string> _valueMap;
 
-        public CategoryPathBuilder(
-            IReadOnlyDictionary<string, string> categoryValueMap)
+        public CategoryPathBuilder(IReadOnlyDictionary<string, string> categoryValueMap)
         {
             _valueMap = categoryValueMap
                 ?? throw new ArgumentNullException(nameof(categoryValueMap));
