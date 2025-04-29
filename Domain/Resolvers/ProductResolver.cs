@@ -105,7 +105,7 @@ namespace ProductsApi.Domain.Resolvers
                     || nameProp.ValueKind != JsonValueKind.String
                     || string.IsNullOrWhiteSpace(nameProp.GetString()))
                 {
-                    warnings.Add($"Product {id}: missing or empty 'name'");
+                    warnings.Add($"Product {id}: missing or empty or non-string 'name'");
                     continue;
                 }
                 var name = nameProp.GetString()!.Trim();
