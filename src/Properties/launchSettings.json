@@ -2,11 +2,10 @@
   "profiles": {
     "http": {
       "commandName": "Project",
+      "applicationUrl": "http://localhost:5211",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
-      },
-      "dotnetRunMessages": true,
-      "applicationUrl": "http://localhost:5014"
+      }
     },
     "IIS Express": {
       "commandName": "IISExpress",

@@ -14,14 +14,16 @@ namespace ProductsApi.Domain.Services
         private readonly IProductGateway _prodGateway;
         private readonly IAttributeGateway _attrGateway;
         private readonly IProductResolver _resolver;
-
+        private readonly ILogger<ProductService> _logger;
         public ProductService(
             IProductGateway prodGateway,
             IAttributeGateway attrGateway,
+            ILogger<ProductService> logger,
             IProductResolver resolver)
         {
             _prodGateway = prodGateway;
             _attrGateway = attrGateway;
+            _logger = logger;
             _resolver = resolver;
         }
 
@@ -43,7 +45,7 @@ namespace ProductsApi.Domain.Services
                     .DeserializeAsync<JsonElement>(attrStream, cancellationToken: cancellationToken);
 
                 // 2) Build lookups
-                var (attrNames, valueNames) = AttributeLookupBuilder.BuildFromJson(attributeMeta);
+                var (attrNames, valueNames) = AttributeLookupBuilder.BuildFromJson(attributeMeta, _logger);
                 var readOnlyValueNames = valueNames.ToDictionary(
                     kvp => kvp.Key,
                     kvp => (IReadOnlyDictionary<string, string>)kvp.Value
@@ -88,14 +90,53 @@ namespace ProductsApi.Domain.Services
         public async Task<PagedProductResponse> GetPageResponseAsync(
             int? page, int? pageSize, CancellationToken ct = default)
         {
-
-            var paged = await GetPageFromFilesAsync(
-                "attributes.json",
-                "products.json",
+            // 1) Retrieve pages
+            var paged = await GetPageAsync(
                 page,
                 pageSize,
                 ct
             );
+            // 2) Count pages
+            var size = pageSize ?? paged.TotalCount;
+
+            var totalPages = size > 0
+             ? (int)Math.Ceiling((double)paged.TotalCount / size)
+             : 1;
+            // 3) Map to DTO
+            var products = paged.Items
+              .Select(p => p.ToProductDto())
+              .ToList();
+            // 4) Populate warnings
+            List<string>? warnings = paged.Warnings?.Count > 0
+                ? paged.Warnings
+                : null;
+
+            // 5) Return PPR
+            return new PagedProductResponse
+            {
+                Page = paged.Page,
+                TotalPages = totalPages,
+                Products = products,
+                Warnings = warnings
+            };
+        }
+
+        public async Task<PagedProductResponse> GetPageResponseAsyncDeveloper(
+            int? page, int? pageSize, string attributes_path, string products_path, CancellationToken ct = default)
+        {
+            // 1) Retrieve pages
+            var paged = await GetPageFromFilesAsync(
+                attributes_path,
+                products_path,
+                page,
+                pageSize,
+                ct
+            );
+            var size = pageSize ?? paged.TotalCount;
+
+            var totalPages = size > 0
+             ? (int)Math.Ceiling((double)paged.TotalCount / size)
+             : 1;
 
             var products = paged.Items
                 .Select(p => p.ToProductDto())
@@ -108,9 +149,12 @@ namespace ProductsApi.Domain.Services
             return new PagedProductResponse
             {
                 Page = paged.Page,
-                TotalPages = paged.TotalPages,
+                TotalPages = totalPages,
                 Products = products,
-                Warnings = warnings
+                // ← map your warnings here
+                Warnings = paged.Warnings?.Count > 0
+                       ? paged.Warnings
+                       : null
             };
         }
 
@@ -135,7 +179,7 @@ namespace ProductsApi.Domain.Services
                     .DeserializeAsync<JsonElement>(attrStream, cancellationToken: cancellationToken);
 
                 // 2) Build lookups exactly as before
-                var (attrNames, valueNames) = AttributeLookupBuilder.BuildFromJson(attributeMeta);
+                var (attrNames, valueNames) = AttributeLookupBuilder.BuildFromJson(attributeMeta, _logger);
                 var readOnlyValueNames = valueNames.ToDictionary(
                     kvp => kvp.Key,
                     kvp => (IReadOnlyDictionary<string, string>)kvp.Value

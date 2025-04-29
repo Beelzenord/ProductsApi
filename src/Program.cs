@@ -15,7 +15,7 @@ using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
+
 
 builder.Services.AddOpenApi();
 
@@ -52,6 +52,15 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
 builder.Services.AddHttpClient();
+
+
+builder.Logging.ClearProviders();
+builder.Logging.AddConsole();
+builder.Logging.AddDebug();
+
+// configure filter levels if you like
+builder.Logging.AddFilter("Microsoft", LogLevel.Warning);
+builder.Logging.AddFilter("ProductsApi", LogLevel.Debug);
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
@@ -67,6 +76,9 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 app.UseRouting();
+
+app.MapGet("/", () => "Hello World!");
+
 
 app.MapGet("/product", async (
         IProductService _svc,
@@ -86,8 +98,30 @@ app.MapGet("/product", async (
 .Produces(StatusCodes.Status400BadRequest)
 .Produces(StatusCodes.Status503ServiceUnavailable)
 .Produces(StatusCodes.Status422UnprocessableEntity)
-.Produces(StatusCodes.Status500InternalServerError); 
+.Produces(StatusCodes.Status500InternalServerError);
 
+
+app.MapGet("/product-test", async (
+        IProductService _svc,
+        int? page,
+        int? page_size,
+        CancellationToken ct,
+        string attribute = "jsons_dummy/bad_attributes.json",
+        string prod = "jsons_dummy/bad_products.json"
+    ) =>
+{
+    if (page < 1 || page_size < 1)
+        return Results.BadRequest("page and page_size must be >= 1");
+    var response = await _svc.GetPageResponseAsyncDeveloper(page, page_size,attribute,prod, ct);
+
+    return Results.Ok(response);
+})
+.WithName("GetProductsTest")
+.Produces<PagedProductResponse>(StatusCodes.Status200OK)
+.Produces(StatusCodes.Status400BadRequest)
+.Produces(StatusCodes.Status503ServiceUnavailable)
+.Produces(StatusCodes.Status422UnprocessableEntity)
+.Produces(StatusCodes.Status500InternalServerError);
 
 
 // error handling middleware
@@ -143,6 +177,4 @@ app.Use(async (ctx, next) =>
 // Run the app
 app.Run();
 
-// Minimal record type for POST example
-public record Message(string Text);
 public partial class Program { }
